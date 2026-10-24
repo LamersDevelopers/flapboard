@@ -20,6 +20,7 @@
     var cfg = G.FLAPBOARD_CONFIG || {};
     Object.keys(DEFAULTS).forEach(function (k) { S[k] = saved[k] !== undefined ? saved[k] : (cfg[k] !== undefined ? cfg[k] : DEFAULTS[k]); });
     if (!S.apiKey && cfg.apiKey) S.apiKey = cfg.apiKey;
+    if (S.themeId === 'weather') S.themeId = 'clock';
   }
   function save() { try { localStorage.setItem('flapboard.v1', JSON.stringify(S)); } catch (e) { } }
   function optLabel(k, v) {

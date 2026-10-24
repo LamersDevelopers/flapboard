@@ -219,27 +219,139 @@
       return out;
     });
   }
-  var WMO_RU = { 0: ['ЯСНО', 'y'], 1: ['ПОЧТИ ЯСНО', 'y'], 2: ['ОБЛАЧНО', 'w'], 3: ['ПАСМУРНО', 'w'], 45: ['ТУМАН', 'w'], 48: ['ТУМАН', 'w'], 51: ['МОРОСЬ', 'b'], 53: ['МОРОСЬ', 'b'], 55: ['МОРОСЬ', 'b'], 61: ['ДОЖДЬ', 'b'], 63: ['ДОЖДЬ', 'b'], 65: ['ЛИВЕНЬ', 'b'], 71: ['СНЕГ', 'w'], 73: ['СНЕГ', 'w'], 75: ['СНЕГОПАД', 'w'], 80: ['ЛИВЕНЬ', 'b'], 81: ['ЛИВЕНЬ', 'b'], 82: ['ЛИВЕНЬ', 'b'], 95: ['ГРОЗА', 'v'], 96: ['ГРОЗА', 'v'], 99: ['ГРОЗА', 'v'] };
-  var WMO_EN = { 0: 'CLEAR', 1: 'MOSTLY CLEAR', 2: 'CLOUDY', 3: 'OVERCAST', 45: 'FOG', 48: 'FOG', 51: 'DRIZZLE', 53: 'DRIZZLE', 55: 'DRIZZLE', 61: 'RAIN', 63: 'RAIN', 65: 'HEAVY RAIN', 71: 'SNOW', 73: 'SNOW', 75: 'SNOW', 80: 'SHOWERS', 81: 'SHOWERS', 82: 'SHOWERS', 95: 'STORM', 96: 'STORM', 99: 'STORM' };
+  var WMO = { // код WMO -> [рус, англ, цвет]
+    0: ['ЯСНО', 'CLEAR', 'y'], 1: ['ПОЧТИ ЯСНО', 'MOSTLY CLEAR', 'y'], 2: ['ПЕРЕМ. ОБЛАЧНОСТЬ', 'PARTLY CLOUDY', 'o'], 3: ['ПАСМУРНО', 'OVERCAST', 'w'],
+    45: ['ТУМАН', 'FOG', 'w'], 48: ['ИЗМОРОЗЬ, ТУМАН', 'RIME FOG', 'w'],
+    51: ['СЛАБАЯ МОРОСЬ', 'LIGHT DRIZZLE', 'b'], 53: ['МОРОСЬ', 'DRIZZLE', 'b'], 55: ['СИЛЬНАЯ МОРОСЬ', 'HEAVY DRIZZLE', 'b'],
+    56: ['ЛЕДЯНАЯ МОРОСЬ', 'FREEZING DRIZZLE', 'b'], 57: ['ЛЕДЯНАЯ МОРОСЬ', 'FREEZING DRIZZLE', 'b'],
+    61: ['НЕБОЛЬШОЙ ДОЖДЬ', 'LIGHT RAIN', 'b'], 63: ['ДОЖДЬ', 'RAIN', 'b'], 65: ['СИЛЬНЫЙ ДОЖДЬ', 'HEAVY RAIN', 'b'],
+    66: ['ЛЕДЯНОЙ ДОЖДЬ', 'FREEZING RAIN', 'b'], 67: ['ЛЕДЯНОЙ ДОЖДЬ', 'FREEZING RAIN', 'b'],
+    71: ['НЕБОЛЬШОЙ СНЕГ', 'LIGHT SNOW', 'w'], 73: ['СНЕГ', 'SNOW', 'w'], 75: ['СИЛЬНЫЙ СНЕГ', 'HEAVY SNOW', 'w'], 77: ['СНЕЖНАЯ КРУПА', 'SNOW GRAINS', 'w'],
+    80: ['ЛИВЕНЬ', 'SHOWERS', 'b'], 81: ['ЛИВЕНЬ', 'SHOWERS', 'b'], 82: ['СИЛЬНЫЙ ЛИВЕНЬ', 'HEAVY SHOWERS', 'b'],
+    85: ['СНЕГОПАД', 'SNOW SHOWERS', 'w'], 86: ['СНЕГОПАД', 'SNOW SHOWERS', 'w'],
+    95: ['ГРОЗА', 'THUNDERSTORM', 'v'], 96: ['ГРОЗА С ГРАДОМ', 'STORM, HAIL', 'v'], 99: ['ГРОЗА С ГРАДОМ', 'STORM, HAIL', 'v']
+  };
+  var DIRS_RU = ['С', 'СВ', 'В', 'ЮВ', 'Ю', 'ЮЗ', 'З', 'СЗ'], DIRS_EN = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  var WD_RU = ['ВС', 'ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ'], WD_EN = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+
+  // Карточка из готовых строк: блок выравнивается по левому краю и центрируется целиком;
+  // строки, начинающиеся с '^', центрируются отдельно.
+  function linesCard(lines) {
+    var g = blank(), rows = lines.slice(0, ROWS).map(function (l) {
+      var c = l.charAt(0) === '^'; return { c: c, t: tokenize(c ? l.slice(1) : l).slice(0, COLS) };
+    });
+    var w = 0; rows.forEach(function (r) { if (!r.c) w = Math.max(w, r.t.length); });
+    var left = Math.floor((COLS - w) / 2), top = Math.floor((ROWS - rows.length) / 2);
+    rows.forEach(function (r, i) {
+      var x = r.c ? Math.floor((COLS - r.t.length) / 2) : left;
+      r.t.forEach(function (ch, k) { g[top + i][x + k] = ch; });
+    });
+    return g;
+  }
+
   function weather(city, lang) {
+    var en = lang === 'en';
+    function L(ru, e) { return en ? e : ru; }
+    function T(v) { if (v === null || v === undefined) return '--'; v = Math.round(v); return (v > 0 ? '+' : '') + v + '°'; }
+    function hm(iso) { return String(iso || '').slice(11, 16); }
+    function dir(deg) { return (en ? DIRS_EN : DIRS_RU)[Math.round(((deg || 0) % 360) / 45) % 8]; }
+    function wmo(code) { var w = WMO[code] || ['', '', 'w']; return { txt: en ? w[1] : w[0], col: w[2] }; }
+    function padR(s, n) { s = String(s); while (s.length < n) s += ' '; return s; }
+    function padL(s, n) { s = String(s); while (s.length < n) s = ' ' + s; return s; }
+    function uvTxt(u) { u = Math.round(u || 0); return u + ' ' + (u <= 2 ? L('НИЗКИЙ', 'LOW') : u <= 5 ? L('СРЕДНИЙ', 'MODERATE') : u <= 7 ? L('ВЫСОКИЙ', 'HIGH') : u <= 10 ? L('ОЧ. ВЫСОКИЙ', 'VERY HIGH') : L('ЭКСТРЕМ.', 'EXTREME')); }
+    function aqiTxt(a) { return a <= 20 ? L('ОТЛИЧНЫЙ', 'GOOD') : a <= 40 ? L('ХОРОШИЙ', 'FAIR') : a <= 60 ? L('СРЕДНИЙ', 'MODERATE') : a <= 80 ? L('ПЛОХОЙ', 'POOR') : a <= 100 ? L('ОЧЕНЬ ПЛОХОЙ', 'VERY POOR') : L('ОПАСНЫЙ', 'HAZARDOUS'); }
+
     var geo = 'https://geocoding-api.open-meteo.com/v1/search?count=1&language=' + lang + '&name=' + encodeURIComponent(city);
-    return getJSON(geo).then(function (g) {
-      if (!g.results || !g.results.length) throw new Error('город не найден');
-      var p = g.results[0];
-      var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + p.latitude + '&longitude=' + p.longitude +
-        '&current=temperature_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=auto&forecast_days=3';
-      return getJSON(url).then(function (w) {
-        function t(v) { v = Math.round(v); return (v > 0 ? '+' : '') + v + '°'; }
-        function desc(code) { var r = WMO_RU[code] || ['', 'w']; return { txt: lang === 'en' ? (WMO_EN[code] || '') : r[0], col: r[1] }; }
-        var now = desc(w.current.weather_code), tm = desc(w.daily.weather_code[1]), d2 = desc(w.daily.weather_code[2]);
-        var name = p.name;
-        var en = lang === 'en';
-        var c1 = '{' + now.col + '} ' + name + ' {' + now.col + '}\n\n' + (en ? 'NOW ' : 'СЕЙЧАС ') + t(w.current.temperature_2m) + '\n' + now.txt +
-          '\n' + (en ? 'WIND ' : 'ВЕТЕР ') + Math.round(w.current.wind_speed_10m) + (en ? ' KM/H' : ' КМ/Ч');
-        var c2 = name + '\n' + (en ? 'TODAY ' : 'СЕГОДНЯ ') + t(w.daily.temperature_2m_max[0]) + '/' + t(w.daily.temperature_2m_min[0]) +
-          '\n{' + tm.col + '} ' + (en ? 'TOMORROW ' : 'ЗАВТРА ') + t(w.daily.temperature_2m_max[1]) + '/' + t(w.daily.temperature_2m_min[1]) + '\n' + tm.txt +
-          '\n{' + d2.col + '} ' + (en ? 'DAY AFTER ' : 'ПОСЛЕЗАВТРА ') + t(w.daily.temperature_2m_max[2]);
-        return [c1, c2];
+    return getJSON(geo).then(function (gres) {
+      if (!gres.results || !gres.results.length) throw new Error(L('город не найден', 'city not found'));
+      var p = gres.results[0], ll = 'latitude=' + p.latitude + '&longitude=' + p.longitude;
+      var name = normalize(p.name);
+      var url = 'https://api.open-meteo.com/v1/forecast?' + ll + '&timezone=auto&forecast_days=7&wind_speed_unit=kmh' +
+        '&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation,is_day' +
+        '&hourly=temperature_2m,precipitation_probability,weather_code' +
+        '&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,sunrise,sunset,daylight_duration,uv_index_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant';
+      var marine = getJSON('https://marine-api.open-meteo.com/v1/marine?' + ll + '&timezone=auto&current=wave_height,wave_direction,wave_period,sea_surface_temperature').catch(function () { return null; });
+      var air = getJSON('https://air-quality-api.open-meteo.com/v1/air-quality?' + ll + '&timezone=auto&current=european_aqi,pm2_5,pm10,uv_index').catch(function () { return null; });
+      return Promise.all([getJSON(url), marine, air]).then(function (r) {
+        var w = r[0], m = r[1], a = r[2], c = w.current, d = w.daily, cards = [];
+        var now = wmo(c.weather_code);
+
+        // 1. Сейчас
+        cards.push(linesCard([
+          '^{' + now.col + '} ' + name + ' {' + now.col + '}',
+          '^' + L('СЕЙЧАС ', 'NOW ') + T(c.temperature_2m) + ' ' + L('ОЩУЩ. ', 'FEELS ') + T(c.apparent_temperature),
+          '^' + now.txt,
+          L('ВЕТЕР ', 'WIND ') + dir(c.wind_direction_10m) + ' ' + Math.round(c.wind_speed_10m) + L(' КМ/Ч', ' KM/H'),
+          L('ПОРЫВЫ ДО ', 'GUSTS UP TO ') + Math.round(c.wind_gusts_10m || 0) + L(' КМ/Ч', ' KM/H'),
+          L('ВЛАЖН. ', 'HUM. ') + Math.round(c.relative_humidity_2m) + '%, ' + Math.round(c.pressure_msl) + L(' ГПА', ' HPA')
+        ]));
+
+        // 2. Солнце
+        var dl = d.daylight_duration ? d.daylight_duration[0] : 0, dlH = Math.floor(dl / 3600), dlM = Math.round((dl % 3600) / 60);
+        cards.push(linesCard([
+          '^{y}{y} ' + L('СОЛНЦЕ', 'SUN') + ' {y}{y}',
+          '',
+          L('ВОСХОД       ', 'SUNRISE      ') + hm(d.sunrise[0]),
+          L('ЗАКАТ        ', 'SUNSET       ') + hm(d.sunset[0]),
+          L('ДЕНЬ         ', 'DAYLIGHT     ') + dlH + ':' + (dlM < 10 ? '0' : '') + dlM,
+          L('УФ ', 'UV ') + uvTxt(a && a.current && a.current.uv_index != null ? a.current.uv_index : d.uv_index_max[0])
+        ]));
+
+        // 3. Сегодня подробно
+        var td = wmo(d.weather_code[0]);
+        cards.push(linesCard([
+          '^{' + td.col + '} ' + L('СЕГОДНЯ', 'TODAY') + ' {' + td.col + '}',
+          '^' + T(d.temperature_2m_max[0]) + ' / ' + T(d.temperature_2m_min[0]),
+          '^' + td.txt,
+          L('ОСАДКИ ', 'RAIN ') + Math.round(d.precipitation_probability_max[0] || 0) + '%, ' + (Math.round((d.precipitation_sum[0] || 0) * 10) / 10) + L(' ММ', ' MM'),
+          L('ВЕТЕР ДО ', 'WIND UP TO ') + Math.round(d.wind_speed_10m_max[0]) + L(' КМ/Ч ', ' KM/H ') + dir(d.wind_direction_10m_dominant[0]),
+          L('ОБЛАЧНОСТЬ ', 'CLOUDS ') + Math.round(c.cloud_cover) + '%'
+        ]));
+
+        // 4. Ближайшие часы (каждые 3 часа)
+        var hrs = w.hourly, nowIso = (c.time || '').slice(0, 13), start = 0;
+        for (var k = 0; k < hrs.time.length; k++) if (hrs.time[k].slice(0, 13) >= nowIso) { start = k; break; }
+        var hl = ['^' + L('БЛИЖАЙШИЕ ЧАСЫ', 'NEXT HOURS')];
+        for (var h = 1; h <= 5; h++) {
+          var ix = start + h * 3; if (ix >= hrs.time.length) break;
+          var hc = wmo(hrs.weather_code[ix]);
+          hl.push(hm(hrs.time[ix]) + ' {' + hc.col + '} ' + padL(T(hrs.temperature_2m[ix]), 4) + '  ' + padL(Math.round(hrs.precipitation_probability[ix] || 0) + '%', 4));
+        }
+        cards.push(linesCard(hl));
+
+        // 5–6. Прогноз на 6 дней (по 3 дня на карточку + заголовок и шапка)
+        function dayRow(i) {
+          var dt = new Date(d.time[i] + 'T12:00:00'), wc = wmo(d.weather_code[i]);
+          return (en ? WD_EN : WD_RU)[dt.getDay()] + ' ' + padL(dt.getDate(), 2) + ' {' + wc.col + '} ' +
+            padL(T(d.temperature_2m_max[i]), 4) + '/' + padR(T(d.temperature_2m_min[i]), 4) + ' ' + padL(Math.round(d.precipitation_probability_max[i] || 0) + '%', 4);
+        }
+        var rows = []; for (var di = 1; di < d.time.length; di++) rows.push(dayRow(di));
+        for (var part = 0; part < rows.length; part += 3) {
+          cards.push(linesCard(['^' + L('ПРОГНОЗ: ДЕНЬ/НОЧЬ, %', 'FORECAST: HI/LO, RAIN'), ''].concat(rows.slice(part, part + 3))));
+        }
+
+        // 7. Ветер на неделю
+        var wl = ['^' + L('ВЕТЕР, КМ/Ч (ПОРЫВЫ)', 'WIND, KM/H (GUSTS)')];
+        for (var wi = 1; wi < Math.min(d.time.length, 6); wi++) {
+          var wdt = new Date(d.time[wi] + 'T12:00:00');
+          wl.push((en ? WD_EN : WD_RU)[wdt.getDay()] + '  ' + padR(dir(d.wind_direction_10m_dominant[wi]), 2) + ' ' + padL(Math.round(d.wind_speed_10m_max[wi]), 3) + ' (' + Math.round(d.wind_gusts_10m_max[wi]) + ')');
+        }
+        cards.push(linesCard(wl));
+
+        // 8. Море и воздух
+        var ml = [];
+        if (m && m.current && m.current.wave_height != null) {
+          ml.push('^{b}{b} ' + L('МОРЕ', 'SEA') + ' {b}{b}');
+          if (m.current.sea_surface_temperature != null) ml.push(L('ВОДА        ', 'WATER       ') + T(m.current.sea_surface_temperature));
+          ml.push(L('ВОЛНЫ       ', 'WAVES       ') + (Math.round(m.current.wave_height * 10) / 10) + L(' М', ' M'));
+          if (m.current.wave_period) ml.push(L('ПЕРИОД      ', 'PERIOD      ') + Math.round(m.current.wave_period) + L(' С', ' S'));
+        }
+        if (a && a.current && a.current.european_aqi != null) {
+          ml.push('^' + L('ВОЗДУХ: ', 'AIR: ') + aqiTxt(a.current.european_aqi));
+          ml.push('AQI ' + Math.round(a.current.european_aqi) + ', PM2.5 ' + Math.round(a.current.pm2_5 || 0));
+        }
+        if (ml.length) cards.push(linesCard(ml));
+        return cards;
       });
     });
   }
@@ -319,7 +431,7 @@
       var live = { live: true, cards: [clockCard], notes: [] };
       live.refresh = function () {
         return weather(o.city || 'Hadera', lang).then(function (c) {
-          var w = c.map(function (t) { return function () { return textCard(t); }; });
+          var w = c.map(function (g) { return function () { return g; }; });
           var cards = [clockCard];
           w.forEach(function (f) { cards.push(f, clockCard); });
           cards.pop();
@@ -371,10 +483,7 @@
     // Интернет
     var pending = [];
     var wantNet = mode === 'net' || mode === 'mix';
-    if (th && th.net === 'weather') {
-      pending.push(weather(o.city || 'Hadera', lang).then(function (c) { c.forEach(function (t) { texts.push(function () { return textCard(t); }); }); })
-        .catch(function (e) { notes.push((lang === 'en' ? 'Weather: ' : 'Погода: ') + e.message); }));
-    } else if (th && th.net === 'onthisday') {
+    if (th && th.net === 'onthisday') {
       pending.push(onThisDay(lang).then(function (c) { shuffle(c).slice(0, 20).forEach(function (t) { nets.push(function () { return textCard(t); }); }); })
         .catch(function (e) { notes.push('Wikipedia: ' + e.message); }));
     } else if (wantNet && custom) {

@@ -452,9 +452,6 @@
       }
     },
     {
-      id: 'weather', ru: 'Погода', en: 'Weather', net: 'weather', noArt: true
-    },
-    {
       id: 'onthisday', ru: 'Этот день в истории', en: 'On this day', net: 'onthisday', noArt: true
     },
     {
