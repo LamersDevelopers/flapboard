@@ -361,7 +361,7 @@
     var pending = [];
     var wantNet = mode === 'net' || mode === 'mix';
     if (th && th.net === 'weather') {
-      pending.push(weather(o.city || 'Hadera', lang).then(function (c) { c.forEach(addText); })
+      pending.push(weather(o.city || 'Hadera', lang).then(function (c) { c.forEach(function (t) { texts.push(function () { return textCard(t); }); }); })
         .catch(function (e) { notes.push((lang === 'en' ? 'Weather: ' : 'Погода: ') + e.message); }));
     } else if (th && th.net === 'onthisday') {
       pending.push(onThisDay(lang).then(function (c) { shuffle(c).slice(0, 20).forEach(function (t) { nets.push(function () { return textCard(t); }); }); })
