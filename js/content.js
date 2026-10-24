@@ -191,7 +191,7 @@
 
   var THEMES = [
     {
-      id: 'clock', ru: 'Часы и дата', en: 'Clock & date', live: true, noArt: true,
+      id: 'clock', ru: 'Часы и погода', en: 'Clock & weather', live: true, noArt: true,
       dyn: function (lang) {
         var d = new Date();
         var t = pad2(d.getHours()) + ':' + pad2(d.getMinutes());

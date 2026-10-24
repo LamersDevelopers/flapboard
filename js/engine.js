@@ -315,7 +315,18 @@
 
     // Живые темы
     if (!custom && th && th.id === 'clock') {
-      return Promise.resolve({ live: true, cards: [function () { return textCard(th.dyn(lang)[0]); }], notes: [] });
+      var clockCard = function () { return textCard(th.dyn(lang)[0]); };
+      var live = { live: true, cards: [clockCard], notes: [] };
+      live.refresh = function () {
+        return weather(o.city || 'Hadera', lang).then(function (c) {
+          var w = c.map(function (t) { return function () { return textCard(t); }; });
+          var cards = [clockCard];
+          w.forEach(function (f) { cards.push(f, clockCard); });
+          cards.pop();
+          live.cards = cards;
+        }).catch(function (e) { live.notes.push((lang === 'en' ? 'Weather: ' : 'Погода: ') + e.message); });
+      };
+      return live.refresh().then(function () { return live; });
     }
 
     // Тексты из библиотеки

@@ -91,15 +91,23 @@
         status(topicName() + ' · ' + optLabel('mode', S.mode), false);
         if (d.notes.length) toast(d.notes.join(' · '));
         if (d.live) {
-          var last = '';
-          var tick = function () { var g = d.cards[0](), s = JSON.stringify(g); if (s !== last) { last = s; showGrid(g); } };
-          tick(); liveTimer = setInterval(tick, 5000);
+          var last = '', idx = 0, since = Date.now(), refreshed = Date.now();
+          var tick = function () {
+            var now = Date.now();
+            if (!paused && now - since >= S.interval * 1000) { idx++; since = now; }
+            if (d.refresh && now - refreshed > 15 * 60000) { refreshed = now; d.refresh(); }
+            idx = idx % d.cards.length;
+            var g = d.cards[idx](), s = JSON.stringify(g);
+            if (s !== last && !showing) { last = s; showGrid(g); }
+          };
+          d.step = function (k) { idx = (idx + k + d.cards.length) % d.cards.length; since = Date.now(); last = ''; tick(); };
+          tick(); liveTimer = setInterval(tick, 1000);
         }
         return true;
       }).catch(function (e) { status('Ошибка: ' + e.message, false); return false; });
   }
   function next() {
-    if (deck && deck.live) return;
+    if (deck && deck.live) { if (deck.step) deck.step(1); return; }
     if (hpos < history.length - 1) { hpos++; showGrid(history[hpos]).then(schedule); return; }
     var p = queue.length ? Promise.resolve(true) : rebuild();
     p.then(function (ok) {
@@ -113,7 +121,7 @@
     });
   }
   function prev() {
-    if (deck && deck.live) return;
+    if (deck && deck.live) { if (deck.step) deck.step(-1); return; }
     if (hpos > 0) { hpos--; showGrid(history[hpos]).then(schedule); }
   }
   function restart() {
