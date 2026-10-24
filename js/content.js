@@ -320,7 +320,7 @@
       }
     },
     {
-      id: 'saab', ru: 'SAAB', en: 'SAAB', kw: ['saab', 'сааб', 'trollh', 'тролльх'],
+      id: 'saab', ru: 'SAAB', en: 'SAAB', exclude: ['SPYKER', 'СПАЙКЕР', 'СПАЙКЕРА'], kw: ['saab', 'сааб', 'trollh', 'тролльх'],
       arts: ['car', 'car2', 'plane'], big: ['SAAB', '900', '9000', '99', 'TURBO'],
       msgs: {
         ru: [

@@ -423,7 +423,9 @@
     var style = o.style;
 
     function keyed(fn, k) { fn.key = k; return fn; }
-    function addText(t) { texts.push(keyed(function () { var f = Math.random() < 0.25 && framedCard(t); return f || textCard(t); }, 't:' + t)); }
+    var excl = (th && th.exclude) || [];
+    function banned(t) { var u = normalize(t); return excl.some(function (w) { return u.indexOf(w) >= 0; }); }
+    function addText(t) { if (banned(t)) return; texts.push(keyed(function () { var f = Math.random() < 0.25 && framedCard(t); return f || textCard(t); }, 't:' + t)); }
     function addArtCaption(name, cap) { arts.push(keyed(function () { return artCard(name, cap, style); }, 'a:' + name + ':' + cap)); }
 
     // Живые темы
@@ -438,6 +440,15 @@
           live.cards = cards;
         }).catch(function (e) { live.notes.push((lang === 'en' ? 'Weather: ' : 'Погода: ') + e.message); });
       };
+      if (o.multi) {
+        clockCard.key = 'clock';
+        return weather(o.city || 'Hadera', lang).then(function (c) {
+          return c.map(function (g, i) { var f = function () { return g; }; f.key = 'w:' + i; return f; });
+        }).catch(function () { return []; }).then(function (w) {
+          var cards = [clockCard]; w.forEach(function (f, i) { cards.push(f); if (i % 3 === 2) cards.push(clockCard); });
+          return { live: false, cards: cards, notes: [] };
+        });
+      }
       return live.refresh().then(function () { return live; });
     }
 
@@ -484,17 +495,17 @@
     var pending = [];
     var wantNet = mode === 'net' || mode === 'mix';
     if (th && th.net === 'onthisday') {
-      pending.push(onThisDay(lang).then(function (c) { shuffle(c).slice(0, 20).forEach(function (t) { nets.push(keyed(function () { return textCard(t); }, 'n:' + t)); }); })
+      pending.push(onThisDay(lang).then(function (c) { shuffle(c).slice(0, 20).forEach(function (t) { if (!banned(t)) nets.push(keyed(function () { return textCard(t); }, 'n:' + t)); }); })
         .catch(function (e) { notes.push('Wikipedia: ' + e.message); }));
     } else if (wantNet && custom) {
       pending.push(wikiFacts(custom, lang).then(function (c) {
         if (!c.length && lang === 'ru') return wikiFacts(custom, 'en');
         return c;
-      }).then(function (c) { c.slice(0, 16).forEach(function (t) { nets.push(keyed(function () { return textCard(t); }, 'n:' + t)); }); })
+      }).then(function (c) { c.slice(0, 16).forEach(function (t) { if (!banned(t)) nets.push(keyed(function () { return textCard(t); }, 'n:' + t)); }); })
         .catch(function (e) { notes.push('Wikipedia: ' + e.message); }));
     } else if (wantNet && th && !th.artOnly && th.id !== 'clock') {
       var q = { saab: 'Saab Automobile', cars: lang === 'en' ? 'automobile history' : 'история автомобиля', newyear: lang === 'en' ? 'New Year traditions' : 'Новый год традиции', birthday: lang === 'en' ? 'birthday traditions' : 'день рождения традиции', kitchen: lang === 'en' ? 'coffee' : 'кофе', israel: lang === 'en' ? 'Jewish holidays' : 'еврейские праздники' }[th.id];
-      if (q) pending.push(wikiFacts(q, lang).then(function (c) { c.slice(0, 10).forEach(function (t) { nets.push(keyed(function () { return textCard(t); }, 'n:' + t)); }); }).catch(function () { }));
+      if (q) pending.push(wikiFacts(q, lang).then(function (c) { c.slice(0, 10).forEach(function (t) { if (!banned(t)) nets.push(keyed(function () { return textCard(t); }, 'n:' + t)); }); }).catch(function () { }));
     }
 
     // ИИ
@@ -533,8 +544,26 @@
     });
   }
 
+  function extend(a, b) { var r = {}, k; for (k in a) r[k] = a[k]; for (k in b) r[k] = b[k]; return r; }
+  // Несколько тем: собираем колоду каждой и чередуем карточки по кругу
+  function buildMulti(o) {
+    var ids = (o.themeIds || []).filter(function (id) { return findTheme(id); });
+    if ((o.custom || '').trim() || ids.length <= 1) return buildDeck(extend(o, { themeId: ids[0] || o.themeId }));
+    return Promise.all(ids.map(function (id) {
+      return buildDeck(extend(o, { themeId: id, multi: true })).catch(function () { return { cards: [], notes: [] }; });
+    })).then(function (decks) {
+      var lists = decks.map(function (d) { return d.cards.slice(); }), cards = [], notes = [];
+      decks.forEach(function (d) { (d.notes || []).forEach(function (n) { if (notes.indexOf(n) < 0) notes.push(n); }); });
+      var idx = lists.map(function (_, i) { return i; });
+      while (lists.some(function (l) { return l.length; })) {
+        shuffle(idx).forEach(function (i) { if (lists[i].length) cards.push(lists[i].shift()); });
+      }
+      return { live: false, cards: cards, notes: notes };
+    });
+  }
+
   G.FlapEngine = {
-    buildDeck: buildDeck, textCard: textCard, fits: fits, findTheme: findTheme, bigCard: bigCard,
+    buildMulti: buildMulti, buildDeck: buildDeck, textCard: textCard, fits: fits, findTheme: findTheme, bigCard: bigCard,
     artCard: artCard, patternCard: patternCard, framedCard: framedCard, normalize: normalize, textLines: textLines
   };
 })(this);

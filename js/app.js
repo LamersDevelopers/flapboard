@@ -12,7 +12,7 @@
     lang: [['ru', 'Русский'], ['en', 'English']],
     search: [[true, 'Да', 'Yes'], [false, 'Нет', 'No']]
   };
-  var DEFAULTS = { themeId: 'saab', custom: '', mode: 'mix', interval: 30, sound: 2, style: 'white', lang: 'ru', city: 'Hadera', apiKey: '', model: 'claude-sonnet-5-5', search: true };
+  var DEFAULTS = { themeId: 'saab', themes: ['saab'], custom: '', mode: 'mix', interval: 30, sound: 2, style: 'white', lang: 'ru', city: 'Hadera', apiKey: '', model: 'claude-sonnet-5-5', search: true };
   var S = {};
   function load() {
     var saved = {};
@@ -21,6 +21,10 @@
     Object.keys(DEFAULTS).forEach(function (k) { S[k] = saved[k] !== undefined ? saved[k] : (cfg[k] !== undefined ? cfg[k] : DEFAULTS[k]); });
     if (!S.apiKey && cfg.apiKey) S.apiKey = cfg.apiKey;
     if (S.themeId === 'weather') S.themeId = 'clock';
+    if (!Array.isArray(S.themes) || !S.themes.length) S.themes = [S.themeId];
+    S.themes = S.themes.map(function (id) { return id === 'weather' ? 'clock' : id; }).filter(function (id, i, a) { return E.findTheme(id) && a.indexOf(id) === i; });
+    if (!S.themes.length) S.themes = ['saab'];
+    S.themeId = S.themes[0];
   }
   function save() { try { localStorage.setItem('flapboard.v1', JSON.stringify(S)); } catch (e) { } }
   function optLabel(k, v) {
@@ -57,10 +61,12 @@
   var deck = null, queue = [], history = [], hpos = -1, timer = null, paused = false, showing = false, gen = 0, liveTimer = null;
   var statusEl = document.getElementById('status'), statusText = document.getElementById('statusText');
   var statusHide = null;
+  function themeTitle(id) { var th = E.findTheme(id); return th ? (S.lang === 'en' ? th.en : th.ru) : ''; }
   function topicName() {
     if (S.custom) return S.custom;
-    var th = E.findTheme(S.themeId);
-    return th ? (S.lang === 'en' ? th.en : th.ru) : '';
+    if (S.themes.length === 1) return themeTitle(S.themes[0]);
+    var names = S.themes.map(themeTitle).join(', ');
+    return (S.lang === 'en' ? 'Mix: ' : 'Микс: ') + (names.length > 48 ? S.themes.length + (S.lang === 'en' ? ' themes' : ' тем') : names);
   }
   function status(msg, loading, sticky) {
     statusText.textContent = msg;
@@ -87,7 +93,7 @@
     clearTimeout(timer); clearInterval(liveTimer);
     queue = [];
     status(topicName() + ' · ' + optLabel('mode', S.mode), true, true);
-    return E.buildDeck({ themeId: S.themeId, custom: S.custom, mode: S.mode, lang: S.lang, style: S.style, city: S.city, apiKey: '', model: S.model, search: S.search })
+    return E.buildMulti({ themeIds: S.themes, themeId: S.themes[0], custom: S.custom, mode: S.mode, lang: S.lang, style: S.style, city: S.city, apiKey: '', model: S.model, search: S.search })
       .then(function (d) {
         if (my !== gen) return false;
         deck = d; queue = avoidRecent(d.cards.slice());
@@ -155,7 +161,7 @@
       d.firstChild.textContent = S.lang === 'en' ? th.en : th.ru;
       themeList.appendChild(d);
     });
-    cols[0] = [document.querySelector('#colThemes [data-k=custom]'), document.querySelector('#colThemes [data-k=customGo]')].concat([].slice.call(themeList.children));
+    cols[0] = [].slice.call(document.querySelectorAll('#colThemes > form .item, #colThemes > .item')).concat([].slice.call(themeList.children));
     cols[1] = [].slice.call(document.querySelectorAll('#colSettings .item'));
     cols.forEach(function (col, ci) {
       col.forEach(function (el, ii) {
@@ -166,10 +172,10 @@
   function render() {
     [].forEach.call(document.querySelectorAll('.item'), function (el) { el.classList.remove('focus'); el.classList.remove('current'); });
     var el = cols[fc][fi]; if (el) el.classList.add('focus');
-    [].forEach.call(themeList.children, function (el) { if (!S.custom && el.getAttribute('data-theme') === S.themeId) el.classList.add('current'); });
+    [].forEach.call(themeList.children, function (el) { el.classList.toggle('checked', sel.indexOf(el.getAttribute('data-theme')) >= 0); });
     if (S.custom) customInput.parentNode.classList.add('current');
     // прокрутка списка тем
-    if (fc === 0 && fi <= 2) themeList.scrollTop = 0;
+    if (fc === 0 && fi <= 4) themeList.scrollTop = 0;
     else if (fc === 0) {
       var it = cols[0][fi], top = it.offsetTop, h = themeList.clientHeight;
       if (top + it.offsetHeight > themeList.scrollTop + h) themeList.scrollTop = top + it.offsetHeight - h;
@@ -184,18 +190,31 @@
     menuOpen = true; menu.className = '';
     customInput.value = S.custom; cityInput.value = S.city;
     fc = 0; fi = 0;
-    if (!S.custom) cols[0].forEach(function (el, i) { if (el.getAttribute('data-theme') === S.themeId) fi = i; });
+    sel = S.custom ? [] : S.themes.slice();
+    if (!S.custom) { for (var q = cols[0].length - 1; q >= 0; q--) if (sel.indexOf(cols[0][q].getAttribute('data-theme')) >= 0) fi = q; }
     render();
   }
   function closeMenu() { menuOpen = false; menu.className = 'hidden'; blurInputs(); }
   function blurInputs() { [customInput, cityInput].forEach(function (i) { i.blur(); }); }
-  var settingsDirty = false;
+  var settingsDirty = false, sel = [];
+  // Применить отмеченные темы. force — нажата кнопка «Показать выбранные».
+  function applyThemes(force) {
+    if (!sel.length) { if (force) toast(S.lang === 'en' ? 'Tick at least one theme' : 'Отметьте хотя бы одну тему'); return false; }
+    var same = !S.custom && sel.length === S.themes.length && sel.every(function (id) { return S.themes.indexOf(id) >= 0; });
+    if (same && !force) return false;
+    var order = C.THEMES.map(function (t) { return t.id; });
+    S.themes = sel.slice().sort(function (a, b) { return order.indexOf(a) - order.indexOf(b); });
+    S.themeId = S.themes[0]; S.custom = ''; save();
+    return true;
+  }
   function activate() {
     var el = cols[fc][fi]; if (!el) return;
     var k = el.getAttribute('data-k'), th = el.getAttribute('data-theme');
-    if (th) { S.themeId = th; S.custom = ''; save(); closeMenu(); restart(); return; }
+    if (th) { var at = sel.indexOf(th); if (at >= 0) sel.splice(at, 1); else sel.push(th); render(); return; }
+    if (k === 'themesAll') { var all = C.THEMES.map(function (t) { return t.id; }); sel = sel.length === all.length ? [] : all; render(); return; }
+    if (k === 'themesGo') { if (applyThemes(true)) { closeMenu(); restart(); } return; }
     if (k === 'customGo') { commitInput(customInput); return; }
-    if (k === 'close') { closeMenu(); if (settingsDirty) { settingsDirty = false; restart(); } return; }
+    if (k === 'close') { var ch = applyThemes(false); closeMenu(); if (settingsDirty || ch) { settingsDirty = false; restart(); } return; }
     var inp = el.querySelector('input');
     if (inp) { inp.focus(); return; }
     if (OPTS[k]) {
@@ -238,7 +257,7 @@
         fc = fc ? 0 : 1; fi = Math.min(fi, cols[fc].length - 1);
         break;
       case 13: activate(); return;
-      case 10009: case 27: case 8: closeMenu(); if (settingsDirty) { settingsDirty = false; restart(); } return;
+      case 10009: case 27: case 8: var ch2 = applyThemes(false); closeMenu(); if (settingsDirty || ch2) { settingsDirty = false; restart(); } return;
       default: return;
     }
     render();
@@ -254,8 +273,8 @@
   var hintTimer = setTimeout(function () { hint.className = 'off'; }, 8000);
   function stepTheme(d) {
     var ids = C.THEMES.map(function (t) { return t.id; });
-    var i = S.custom ? 0 : Math.max(0, ids.indexOf(S.themeId));
-    S.custom = ''; S.themeId = ids[(i + d + ids.length) % ids.length]; save(); restart();
+    var i = S.custom ? 0 : Math.max(0, ids.indexOf(S.themes[0]));
+    S.custom = ''; S.themeId = ids[(i + d + ids.length) % ids.length]; S.themes = [S.themeId]; save(); restart();
   }
   document.addEventListener('keydown', function (e) {
     board.sound.init();
@@ -280,7 +299,7 @@
         try { tizen.application.getCurrentApplication().exit(); } catch (err) { }
         break;
       default:
-        if (c >= 48 && c <= 57) { var n = c === 48 ? 9 : c - 49; if (C.THEMES[n]) { S.custom = ''; S.themeId = C.THEMES[n].id; save(); restart(); } }
+        if (c >= 48 && c <= 57) { var n = c === 48 ? 9 : c - 49; if (C.THEMES[n]) { S.custom = ''; S.themeId = C.THEMES[n].id; S.themes = [S.themeId]; save(); restart(); } }
         else return;
     }
     e.preventDefault();
