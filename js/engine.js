@@ -433,8 +433,7 @@
         return weather(o.city || 'Hadera', lang).then(function (c) {
           var w = c.map(function (g) { return function () { return g; }; });
           var cards = [clockCard];
-          w.forEach(function (f) { cards.push(f, clockCard); });
-          cards.pop();
+          w.forEach(function (f, i) { cards.push(f); if (i % 2 === 1 && i < w.length - 1) cards.push(clockCard); });
           live.cards = cards;
         }).catch(function (e) { live.notes.push((lang === 'en' ? 'Weather: ' : 'Погода: ') + e.message); });
       };
