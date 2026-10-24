@@ -36,11 +36,12 @@
   // ---------- Табло ----------
   var board = new Board(document.getElementById('frame'));
   function layout() {
-    var W = G.innerWidth, H = G.innerHeight;
+    var vv = G.visualViewport, W = Math.min(G.innerWidth, vv ? vv.width * vv.scale : 1e9), H = Math.min(G.innerHeight, vv ? vv.height * vv.scale : 1e9);
     // ширина: 22*cw + 21*gap*0.55 + 2*1.8*gap; высота: 6*ch + 5*gap + 2*1.6*gap; ch = 1.34*cw; gap = 0.22*cw
     var g = 0.22, k = 1.34;
-    var cwW = (W * 0.95) / (22 + 21 * g * 0.55 + 3.6 * g);
-    var cwH = (H * 0.86) / (6 * k + 5 * g + 3.2 * g);
+    var small = Math.min(W, H) < 600;
+    var cwW = (W * (small ? 0.97 : 0.95)) / (22 + 21 * g * 0.55 + 3.6 * g);
+    var cwH = (H * (small ? 0.80 : 0.86)) / (6 * k + 5 * g + 3.2 * g);
     var cw = Math.floor(Math.min(cwW, cwH));
     var root = document.documentElement.style;
     root.setProperty('--cw', cw + 'px');
@@ -50,6 +51,7 @@
   }
   layout();
   G.addEventListener('resize', layout);
+  G.addEventListener('orientationchange', function () { setTimeout(layout, 250); });
 
   // ---------- Плеер ----------
   var deck = null, queue = [], history = [], hpos = -1, timer = null, paused = false, showing = false, gen = 0, liveTimer = null;
@@ -289,7 +291,11 @@
     var d = document, el = d.documentElement;
     try {
       if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
-      else (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+      else {
+        var pr = (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+        var lock = function () { try { if (screen.orientation && screen.orientation.lock && Math.min(screen.width, screen.height) < 900) screen.orientation.lock('landscape').catch(function () { }); } catch (e) { } };
+        if (pr && pr.then) pr.then(lock).catch(function () { }); else lock();
+      }
     } catch (e) { }
   }
   var firstTap = true;
@@ -310,7 +316,8 @@
     showBar();
   });
   document.addEventListener('mousemove', showBar);
-  if (!isApp) { hint.textContent = 'Нажмите на доску — появятся кнопки · ☰ — темы и настройки'; }
+  var touch = ('ontouchstart' in G) || (navigator.maxTouchPoints > 0);
+  if (!isApp) { hint.textContent = touch ? 'Коснитесь доски — появятся кнопки' : 'Нажмите на доску — появятся кнопки · ☰ — темы и настройки'; }
   menu.addEventListener('click', function (e) { if (e.target === menu) closeMenu(); });
 
   // ---------- Старт ----------

@@ -8,76 +8,55 @@
   DRUM.forEach(function (c, i) { DRUM_IDX[c] = i; });
 
   // ---------------- Звук ----------------
-  // Модальный синтез щелчка пластикового флажка: удар + отскок, резонансы пластика,
-  // глухой удар корпуса. Банк вариантов рендерится один раз, потом только проигрывается.
-  function rng(seed) { return function () { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
-  function renderClick(sr, seed) {
-    var R = rng(seed * 7919 + 13), len = Math.floor(sr * 0.11), out = new Float32Array(len), TAU = Math.PI * 2;
-    var base = 0.9 + R() * 0.22;
-    var modes = [[820, 0.020, 0.35], [1650, 0.016, 0.7], [2900, 0.011, 1.0], [4400, 0.007, 0.75], [6800, 0.004, 0.45], [9600, 0.0025, 0.25]];
-    var t1 = 0.0035 + R() * 0.006, t2 = t1 + 0.003 + R() * 0.004;
-    var hits = [[0, 1], [t1, 0.32 + R() * 0.25], [t2, 0.08 + R() * 0.1]];
-    hits.forEach(function (h, hi) {
-      var s0 = Math.floor(h[0] * sr);
-      modes.forEach(function (m) {
-        var f = m[0] * base * (0.96 + R() * 0.08) * (hi ? 1.03 : 1), dec = m[1] * (0.8 + R() * 0.4), a = m[2] * h[1] * (0.7 + R() * 0.6), ph = R() * TAU;
-        var n = Math.min(len - s0, Math.floor(dec * sr * 7));
-        for (var k = 0; k < n; k++) { var t = k / sr; out[s0 + k] += a * Math.exp(-t / dec) * Math.sin(TAU * f * t + ph); }
-      });
-      // короткий шумовой транзиент — «сухость» пластика
-      var tn = Math.floor(sr * 0.0006);
-      for (var q = 0; q < tn && s0 + q < len; q++) out[s0 + q] += (R() * 2 - 1) * 0.9 * h[1] * (1 - q / tn);
-    });
-    // глухой удар по корпусу
-    var tf = (170 + R() * 90) * base, td = 0.010 + R() * 0.006, ta = 0.45 + R() * 0.3;
-    for (var k2 = 0; k2 < len; k2++) { var tt = k2 / sr; out[k2] += ta * Math.exp(-tt / td) * Math.sin(TAU * tf * tt); }
-    var peak = 0; for (var z = 0; z < len; z++) peak = Math.max(peak, Math.abs(out[z]));
-    for (z = 0; z < len; z++) out[z] *= 0.9 / peak;
-    return out;
-  }
-  function Sound() { this.ctx = null; this.level = 2; this.win = 0; this.cnt = 0; this.bank = []; }
-  Sound.LEVELS = [0, 0.3, 0.6, 1.0];
+  // Шелест флажков: короткий отфильтрованный шум (основа) + яркий «тсс»-слой для чёткости
+  // + изредка глухой удар корпуса. Стерео по колонке.
+  function Sound() { this.ctx = null; this.level = 2; this.win = 0; this.cnt = 0; }
+  Sound.LEVELS = [0, 0.25, 0.55, 1.0];
   Sound.prototype.init = function () {
     if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
     var AC = G.AudioContext || G.webkitAudioContext;
     if (!AC) return;
-    var c = this.ctx = new AC(), sr = c.sampleRate;
-    for (var v = 0; v < 18; v++) {
-      var data = renderClick(sr, v + 1), b = c.createBuffer(1, data.length, sr);
-      b.getChannelData(0).set(data); this.bank.push(b);
-    }
+    var c = this.ctx = this.offline || new AC();
+    var len = Math.floor(c.sampleRate * 0.6);
+    var buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0);
+    for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    this.noise = buf;
     this.comp = c.createDynamicsCompressor();
-    this.comp.threshold.value = -14; this.comp.ratio.value = 4; this.comp.attack.value = 0.002; this.comp.release.value = 0.08;
-    this.master = c.createGain(); this.master.gain.value = Sound.LEVELS[this.level];
-    // короткое «эхо» стены/кухни
-    var irLen = Math.floor(sr * 0.14), ir = c.createBuffer(2, irLen, sr);
-    for (var ch = 0; ch < 2; ch++) { var d = ir.getChannelData(ch); for (var i = 0; i < irLen; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / irLen, 3) * (i < sr * 0.004 ? 0 : 1); }
-    this.verb = c.createConvolver(); this.verb.buffer = ir;
-    this.wet = c.createGain(); this.wet.gain.value = 0.16;
-    this.bus = c.createGain();
-    this.bus.connect(this.comp); this.bus.connect(this.verb); this.verb.connect(this.wet); this.wet.connect(this.comp);
+    this.comp.threshold.value = -18; this.comp.ratio.value = 4; this.comp.attack.value = 0.001; this.comp.release.value = 0.06;
+    this.master = c.createGain();
+    this.master.gain.value = Sound.LEVELS[this.level];
     this.comp.connect(this.master); this.master.connect(c.destination);
   };
   Sound.prototype.setLevel = function (l) {
     this.level = l;
     if (this.master) this.master.gain.value = Sound.LEVELS[l];
   };
-  // col — номер колонки 0..21, для стереопанорамы
+  Sound.prototype._burst = function (t, type, freq, q, peak, attack, decay, out) {
+    var c = this.ctx, s = c.createBufferSource(); s.buffer = this.noise;
+    var f = c.createBiquadFilter(); f.type = type; f.frequency.value = freq; if (q) f.Q.value = q;
+    var g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
+    s.connect(f); f.connect(g); g.connect(out);
+    s.start(t, Math.random() * 0.5, attack + decay + 0.01);
+  };
+  // col — колонка 0..21 (для стерео)
   Sound.prototype.click = function (col) {
     var c = this.ctx;
-    if (!c || !this.level || c.state !== 'running' || !this.bank.length) return;
+    if (!c || !this.level || (c.state !== 'running' && !this.offline)) return;
     var now = c.currentTime;
-    if (now - this.win < 0.008) { if (++this.cnt > 5) return; } else { this.win = now; this.cnt = 0; }
-    var t = now + Math.random() * 0.004;
-    var s = c.createBufferSource();
-    s.buffer = this.bank[Math.floor(Math.random() * this.bank.length)];
-    s.playbackRate.value = 0.93 + Math.random() * 0.14;
-    var g = c.createGain(); g.gain.value = 0.35 + Math.random() * 0.4;
-    s.connect(g);
+    if (now - this.win < 0.010) { if (++this.cnt > 5) return; } else { this.win = now; this.cnt = 0; }
+    var t = now + Math.random() * 0.005, out = this.comp;
     if (c.createStereoPanner && col !== undefined) {
-      var p = c.createStereoPanner(); p.pan.value = (col / 21 - 0.5) * 1.2; g.connect(p); p.connect(this.bus);
-    } else g.connect(this.bus);
-    s.start(t);
+      var p = c.createStereoPanner(); p.pan.value = (col / 21 - 0.5) * 1.1; p.connect(this.comp); out = p;
+    }
+    // основа шелеста
+    this._burst(t, 'bandpass', 2600 + Math.random() * 2800, 1.0, 0.38 + Math.random() * 0.22, 0.0006, 0.018, out);
+    // чёткость: яркий короткий верх
+    this._burst(t, 'highpass', 5500 + Math.random() * 2500, 0.7, 0.22 + Math.random() * 0.14, 0.0003, 0.006, out);
+    if (Math.random() < 0.35) // глухой «тук» корпуса
+      this._burst(t, 'lowpass', 600 + Math.random() * 300, 0, 0.32, 0.002, 0.03, out);
   };
 
   // ---------------- Ячейка ----------------
@@ -215,6 +194,6 @@
     for (var r = 0; r < ROWS; r++) for (var c = 0; c < COLS; c++) this.cells[r][c].setNow(' ');
   };
 
-  Board.renderClick = renderClick;
+  Board.Sound = Sound;
   G.FlapBoard = Board;
 })(this);

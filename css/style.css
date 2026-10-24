@@ -1,7 +1,7 @@
 @font-face { font-family: 'Flap'; src: url('../fonts/flap.ttf') format('truetype'); font-weight: 700; }
 
 :root {
-  --cw: 64px; --ch: 86px; --gap: 14px; --fs: 56px;
+  --cw: 8px; --ch: 11px; --gap: 2px; --fs: 7px;
   --tile: #f3f2ee; --tile2: #e4e2dc; --ink: #1b1b1b; --frame: #fbfbf9; --seam: rgba(0,0,0,.18);
   --wall1: #8d8a84; --wall2: #7b7872;
   --ui-bg: rgba(20,20,22,.92); --ui-fg: #f2f2f2; --ui-dim: #9a9a9a; --ui-acc: #f4c20d;
@@ -22,7 +22,7 @@ body {
   color: var(--ui-fg);
   cursor: default;
 }
-#stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+#stage { position: absolute; inset: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
 #frame {
   background: var(--frame);
   padding: calc(var(--gap) * 1.6) calc(var(--gap) * 1.8);
@@ -103,3 +103,33 @@ body {
   border-radius: 18px; padding: 18px 28px; cursor: pointer; }
 #bar button:hover, #bar button:focus { border-color: var(--ui-acc); outline: none; }
 #themeList::-webkit-scrollbar { display: none; }
+
+/* ---------- Телефоны и планшеты ---------- */
+#rotate { display: none; }
+@media (max-width: 900px), (max-height: 600px) {
+  html, body { height: 100%; }
+  body { -webkit-tap-highlight-color: transparent; }
+  #frame { border-radius: 4px; }
+  #menu { align-items: stretch; justify-content: stretch; }
+  .panel { flex-direction: column; width: 100%; height: 100%; border-radius: 0; gap: 18px; background: #18181b;
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .col { flex: none; }
+  #themeList { overflow: visible; flex: none; }
+  .col h2 { font-size: 17px; margin-bottom: 8px; }
+  .item { font-size: 18px; padding: 11px 14px; border-width: 2px; margin-bottom: 3px; }
+  .item.focus { border-color: transparent; background: none; }
+  .item:active { background: rgba(255,255,255,.1); }
+  .item input { font-size: 16px; padding: 10px 12px; }
+  .item.button { position: sticky; bottom: 0; background: #3a3218; border-color: var(--ui-acc); }
+  .help { display: none; }
+  #bar { bottom: max(12px, env(safe-area-inset-bottom)); gap: 8px; width: max-content; max-width: 96vw; flex-wrap: wrap; justify-content: center; }
+  #bar button { font-size: 18px; padding: 11px 15px; border-radius: 12px; border-width: 2px; }
+  #hint { font-size: 13px; top: max(10px, env(safe-area-inset-top)); padding: 7px 12px; max-width: 92vw; white-space: normal; text-align: center; }
+  #status { font-size: 14px; bottom: auto; top: max(10px, env(safe-area-inset-top)); padding: 7px 14px; }
+  #toast { font-size: 14px; top: auto; bottom: 80px; right: 12px; left: 12px; max-width: none; }
+}
+@media (orientation: portrait) and (max-width: 900px) {
+  #rotate { display: block; position: absolute; left: 0; right: 0; top: calc(50% + 21vw); text-align: center;
+    font: 15px/1.4 'Flap', sans-serif; color: rgba(255,255,255,.8); padding: 0 24px; }
+}
