@@ -90,7 +90,7 @@
     return E.buildDeck({ themeId: S.themeId, custom: S.custom, mode: S.mode, lang: S.lang, style: S.style, city: S.city, apiKey: '', model: S.model, search: S.search })
       .then(function (d) {
         if (my !== gen) return false;
-        deck = d; queue = d.cards.slice();
+        deck = d; queue = avoidRecent(d.cards.slice());
         status(topicName() + ' · ' + optLabel('mode', S.mode), false);
         if (d.notes.length) toast(d.notes.join(' · '));
         if (d.live) {
@@ -109,6 +109,12 @@
         return true;
       }).catch(function (e) { status('Ошибка: ' + e.message, false); return false; });
   }
+  var recent = [];
+  function avoidRecent(cards) {
+    var fresh = [], old = [];
+    cards.forEach(function (f) { (f.key && recent.indexOf(f.key) >= 0 ? old : fresh).push(f); });
+    return fresh.concat(old);
+  }
   function next() {
     if (deck && deck.live) { if (deck.step) deck.step(1); return; }
     if (hpos < history.length - 1) { hpos++; showGrid(history[hpos]).then(schedule); return; }
@@ -117,7 +123,9 @@
       if (!ok && !queue.length) { schedule(); return; }
       if (deck && deck.live) return;
       var g;
-      try { g = queue.shift()(); } catch (e) { g = E.patternCard(); }
+      var fn = queue.shift();
+      try { g = fn(); } catch (e) { g = E.patternCard(); }
+      if (fn && fn.key) { recent.push(fn.key); if (recent.length > 60) recent.shift(); }
       history.push(g); if (history.length > 40) history.shift();
       hpos = history.length - 1;
       showGrid(g).then(schedule);
@@ -147,7 +155,7 @@
       d.firstChild.textContent = S.lang === 'en' ? th.en : th.ru;
       themeList.appendChild(d);
     });
-    cols[0] = [document.querySelector('#colThemes [data-k=custom]')].concat([].slice.call(themeList.children));
+    cols[0] = [document.querySelector('#colThemes [data-k=custom]'), document.querySelector('#colThemes [data-k=customGo]')].concat([].slice.call(themeList.children));
     cols[1] = [].slice.call(document.querySelectorAll('#colSettings .item'));
     cols.forEach(function (col, ci) {
       col.forEach(function (el, ii) {
@@ -161,7 +169,7 @@
     [].forEach.call(themeList.children, function (el) { if (!S.custom && el.getAttribute('data-theme') === S.themeId) el.classList.add('current'); });
     if (S.custom) customInput.parentNode.classList.add('current');
     // прокрутка списка тем
-    if (fc === 0 && fi <= 1) themeList.scrollTop = 0;
+    if (fc === 0 && fi <= 2) themeList.scrollTop = 0;
     else if (fc === 0) {
       var it = cols[0][fi], top = it.offsetTop, h = themeList.clientHeight;
       if (top + it.offsetHeight > themeList.scrollTop + h) themeList.scrollTop = top + it.offsetHeight - h;
@@ -186,6 +194,7 @@
     var el = cols[fc][fi]; if (!el) return;
     var k = el.getAttribute('data-k'), th = el.getAttribute('data-theme');
     if (th) { S.themeId = th; S.custom = ''; save(); closeMenu(); restart(); return; }
+    if (k === 'customGo') { commitInput(customInput); return; }
     if (k === 'close') { closeMenu(); if (settingsDirty) { settingsDirty = false; restart(); } return; }
     var inp = el.querySelector('input');
     if (inp) { inp.focus(); return; }
@@ -202,6 +211,7 @@
     if (inp === customInput) {
       inp.blur();
       if (v) { S.custom = v; save(); closeMenu(); restart(); }
+      else toast(S.lang === 'en' ? 'Type a topic first' : 'Сначала впишите тему');
       return;
     }
     if (inp === cityInput) S.city = v || DEFAULTS.city;
@@ -217,6 +227,9 @@
     });
     inp.addEventListener('change', function () { if (inp !== customInput) commitInput(inp); });
   });
+  // кнопка «Перейти/Go» на экранной клавиатуре телефона/ТВ отправляет форму
+  document.getElementById('customForm').addEventListener('submit', function (e) { e.preventDefault(); commitInput(customInput); });
+  customInput.addEventListener('keyup', function (e) { if (e.key === 'Enter') { e.preventDefault(); commitInput(customInput); } });
   function handleMenuKey(c) {
     switch (c) {
       case 38: fi = Math.max(0, fi - 1); break;

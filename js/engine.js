@@ -422,8 +422,9 @@
     var texts = [], arts = [], nets = [], notes = [];
     var style = o.style;
 
-    function addText(t) { texts.push(function () { var f = Math.random() < 0.25 && framedCard(t); return f || textCard(t); }); }
-    function addArtCaption(name, cap) { arts.push(function () { return artCard(name, cap, style); }); }
+    function keyed(fn, k) { fn.key = k; return fn; }
+    function addText(t) { texts.push(keyed(function () { var f = Math.random() < 0.25 && framedCard(t); return f || textCard(t); }, 't:' + t)); }
+    function addArtCaption(name, cap) { arts.push(keyed(function () { return artCard(name, cap, style); }, 'a:' + name + ':' + cap)); }
 
     // Живые темы
     if (!custom && th && th.id === 'clock') {
@@ -483,17 +484,17 @@
     var pending = [];
     var wantNet = mode === 'net' || mode === 'mix';
     if (th && th.net === 'onthisday') {
-      pending.push(onThisDay(lang).then(function (c) { shuffle(c).slice(0, 20).forEach(function (t) { nets.push(function () { return textCard(t); }); }); })
+      pending.push(onThisDay(lang).then(function (c) { shuffle(c).slice(0, 20).forEach(function (t) { nets.push(keyed(function () { return textCard(t); }, 'n:' + t)); }); })
         .catch(function (e) { notes.push('Wikipedia: ' + e.message); }));
     } else if (wantNet && custom) {
       pending.push(wikiFacts(custom, lang).then(function (c) {
         if (!c.length && lang === 'ru') return wikiFacts(custom, 'en');
         return c;
-      }).then(function (c) { c.slice(0, 16).forEach(function (t) { nets.push(function () { return textCard(t); }); }); })
+      }).then(function (c) { c.slice(0, 16).forEach(function (t) { nets.push(keyed(function () { return textCard(t); }, 'n:' + t)); }); })
         .catch(function (e) { notes.push('Wikipedia: ' + e.message); }));
     } else if (wantNet && th && !th.artOnly && th.id !== 'clock') {
       var q = { saab: 'Saab Automobile', cars: lang === 'en' ? 'automobile history' : 'история автомобиля', newyear: lang === 'en' ? 'New Year traditions' : 'Новый год традиции', birthday: lang === 'en' ? 'birthday traditions' : 'день рождения традиции', kitchen: lang === 'en' ? 'coffee' : 'кофе', israel: lang === 'en' ? 'Jewish holidays' : 'еврейские праздники' }[th.id];
-      if (q) pending.push(wikiFacts(q, lang).then(function (c) { c.slice(0, 10).forEach(function (t) { nets.push(function () { return textCard(t); }); }); }).catch(function () { }));
+      if (q) pending.push(wikiFacts(q, lang).then(function (c) { c.slice(0, 10).forEach(function (t) { nets.push(keyed(function () { return textCard(t); }, 'n:' + t)); }); }).catch(function () { }));
     }
 
     // ИИ

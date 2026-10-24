@@ -28,8 +28,11 @@
     <div class="panel">
       <div class="col" id="colThemes">
         <h2>Тема</h2>
-        <label class="item input" data-k="custom"><span class="lbl">✎ Своя тема</span>
-          <input id="customInput" type="text" placeholder="например: SAAB 900, отпуск, кофе…" autocomplete="off"></label>
+        <form id="customForm" action="#" autocomplete="off">
+          <label class="item input" data-k="custom"><span class="lbl">✎ Своя тема</span>
+            <input id="customInput" type="text" enterkeyhint="go" placeholder="например: SAAB 900, отпуск, кофе…" autocomplete="off"></label>
+        </form>
+        <div class="item button" data-k="customGo"><span class="lbl">▶ Показать свою тему</span></div>
         <div id="themeList"></div>
       </div>
       <div class="col" id="colSettings">
